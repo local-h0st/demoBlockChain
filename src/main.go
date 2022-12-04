@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"time"
@@ -68,23 +69,58 @@ func NewBlockchain() *Blockchain {
 }
 
 // proof of work
-func ProofOfWork(block *Block, targetbits int) (int, []byte) {
-	target := big.NewInt(1)
-	target.Lsh(target, uint(256-targetbits))
-	// target是proof of work的目标，左移的目的是造出前面有targetbits的0
-	// target准备完毕, 开始计算nonce
-	var nonce int // 从0开始还是1开始
+func (block *Block) PrepareData() []byte {
 	var data []byte = bytes.Join(
 		[][]byte{
 			block.PrevBlockHash,
 			block.Data,
 			// 原教程用的函数的IntToHex但是我没有
 			[]byte(strconv.FormatInt(block.Timestamp, 16)),
-			[]byte(strconv.FormatInt(int64(targetbits), 16)),
-			[]byte(strconv.FormatInt(int64(nonce), 16)),
 		},
 		[]byte{},
 	)
-	// TODO 还没真正开始算nonce呢
-	return nonce, data
+	return data
+	// 前区块hash+当前区块内容+当前区块创建时间戳
+}
+
+func ProofOfWork(block *Block, targetbits int) (int, []byte) {
+	target := big.NewInt(1)
+	target.Lsh(target, uint(256-targetbits))
+	// target是proof of work的目标，左移的目的是造出前面有targetbits的0
+	// target准备完毕, 开始计算nonce
+	const maxNonce = math.MaxInt64
+	var nonce int // 从0开始还是1开始呢
+	var origin_data []byte = bytes.Join(
+		[][]byte{
+			block.PrepareData(),
+			[]byte(strconv.FormatInt(int64(targetbits), 16)),
+			// 添加难度信息
+		},
+		[]byte{},
+	)
+	var data []byte
+	// 正式开始proof of work
+	for nonce < maxNonce {
+		// step 1. merge nonce with origin_data
+		data = bytes.Join(
+			[][]byte{
+				origin_data,
+				[]byte(strconv.FormatInt(int64(nonce), 16)),
+			},
+			[]byte{},
+		)
+		// step 2. calc the hash
+		hash := sha256.Sum256(data)
+		var hashInt big.Int
+		hashInt.SetBytes(hash[:])
+		// step 3/ compare current and target
+		if hashInt.Cmp(target) == -1 {
+			// current < target, which means the number of 0s from the start is more than target
+			return nonce, data
+		} else {
+			nonce++
+		}
+	}
+	return -1, []byte{}
+	// TODO 写完还没测试
 }
