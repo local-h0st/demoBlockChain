@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const targetBits = 12
+const targetBits = 24
 
 // proof of work
 // 为4的整数倍的话target的十六进制是一堆0跟1个1再跟一堆0
@@ -20,14 +20,12 @@ const targetBits = 12
 func main() {
 	fmt.Println("This is the start of project 'demoBlockChain'")
 	blockchain := NewBlockchain()
-	blockchain.AddBlock("this is the second block's data")
-	blockchain.AddBlock("third one here!")
-	for _, b := range blockchain.blocks {
-		fmt.Println("\nprev-hash:", b.PrevBlockHash, "\ndata:", b.Data, "\ntimestamp:", b.Timestamp, "\ncurrent block hash:", b.Hash)
-	}
+	blockchain.PrintChain()
 	fmt.Println()
-	fmt.Println()
-	fmt.Println(ProofOfWork(blockchain.blocks[0], targetBits))
+	blockchain.AddBlock("transactions: redh3t get 100$ as a miner.")
+	blockchain.PrintChain()
+	blockchain.AddBlock("transactions: redh3t send 50$ to localh0st.")
+	blockchain.PrintChain()
 }
 
 // 基本结构体和方法
@@ -37,6 +35,8 @@ type Block struct {
 	Data          []byte
 	PrevBlockHash []byte
 	Hash          []byte
+	Nonce         int
+	TargetBits    int
 }
 
 func (block *Block) SetHash() {
@@ -44,6 +44,7 @@ func (block *Block) SetHash() {
 	headers := bytes.Join([][]byte{block.PrevBlockHash, block.Data, timestamp}, []byte{})
 	next_hash := sha256.Sum256(headers)
 	block.Hash = next_hash[:]
+	// 当前块hash包括prevhash, data, timestamp
 }
 
 type Blockchain struct {
@@ -52,20 +53,49 @@ type Blockchain struct {
 
 func (chain *Blockchain) AddBlock(data_prepared string) {
 	new_block := NewBlock(data_prepared, chain.blocks[len(chain.blocks)-1].Hash)
+	nonce, _ := ProofOfWork(new_block, targetBits)
+	if nonce == -1 {
+		panic("nonce not found.")
+	}
+	// proof of work should be done before set hash
+	new_block.SetHash()
+	new_block.Nonce = nonce
+	new_block.TargetBits = targetBits
+	// the latest block finally was added to the end of chain
 	chain.blocks = append(chain.blocks, new_block)
+}
+
+func (b *Block) PrintBlockInfo() {
+	fmt.Println("prevhash:", b.PrevBlockHash)
+	fmt.Println("timestamp:", b.Timestamp)
+	fmt.Println("data:", string(b.Data))
+	fmt.Println("hash:", b.Hash)
+	fmt.Println("targetbits:", b.TargetBits)
+	fmt.Println("nonce:", b.Nonce)
+}
+
+func (chain *Blockchain) PrintChain() {
+	fmt.Println("######## block chain info ########")
+	for i, b := range chain.blocks {
+		fmt.Println("===> block", i)
+		b.PrintBlockInfo()
+	}
+	fmt.Println("######## block chain ended ########")
 }
 
 // 以下是NewBlock函数和NewBlockchain函数
 
 func NewBlock(data string, prevHash []byte) *Block {
-	block := &Block{time.Now().Unix(), []byte(data), prevHash, []byte{}}
-	block.SetHash()
+	block := &Block{time.Now().Unix(), []byte(data), prevHash, []byte{}, 0, 0}
 	return block
 	// NewBlock在数据准备完毕之后被调用，打包后直接写入链，并且不再改动
 	// 因此记录打包时间戳，打包完成后计算Hash
 }
 func NewBlockchain() *Blockchain {
-	return &Blockchain{[]*Block{NewBlock("Genesis block created by redh3t.", []byte{})}}
+	genesis_block := NewBlock("Genesis block created by redh3t.", []byte{})
+	genesis_block.SetHash()
+	genesis_block.TargetBits = targetBits
+	return &Blockchain{[]*Block{genesis_block}}
 }
 
 // proof of work
@@ -80,7 +110,7 @@ func (block *Block) PrepareData() []byte {
 		[]byte{},
 	)
 	return data
-	// 前区块hash+当前区块内容+当前区块创建时间戳
+	// return byte array consists of prevhash, data, timestamp
 }
 
 func ProofOfWork(block *Block, targetbits int) (int, []byte) {
@@ -110,6 +140,7 @@ func ProofOfWork(block *Block, targetbits int) (int, []byte) {
 			[]byte{},
 		)
 		// step 2. calc the hash
+		// hash consists of prevhash, data, timestamp, targetbits, nonce altogether
 		hash := sha256.Sum256(data)
 		var hashInt big.Int
 		hashInt.SetBytes(hash[:])
@@ -122,5 +153,5 @@ func ProofOfWork(block *Block, targetbits int) (int, []byte) {
 		}
 	}
 	return -1, []byte{}
-	// TODO 写完还没测试
+	// 测试成功
 }
